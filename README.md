@@ -22,6 +22,11 @@ cp .env.example .env
 ```bash
 docker compose up --build
 ```
+3. Run database migrations:
+```bash
+cd backend
+alembic upgrade head
+```
 3. Verify:
 - Backend health: `http://localhost:8000/health`
 - Frontend cockpit: `http://localhost:3000`
@@ -49,11 +54,27 @@ docker compose up --build
   - adaptive question generation
 - Persists submission + profile version + audit log (tenant-aware via `x-tenant-id` header)
 
+`POST /api/v1/pipeline/run-async`
+- Queues pipeline execution on Celery worker and returns `job_id`
+
+`GET /api/v1/pipeline/jobs/{job_id}`
+- Poll job status and retrieve final `PipelineResponse` when completed
+
 `GET /api/v1/submissions`
 - Lists recent submissions for the tenant
 
 `GET /api/v1/submissions/{submission_id}/export?format=markdown|json|pdf`
 - Exports packet summary as Markdown, JSON, or PDF
+- Stores export artifacts through the configured storage backend (`local` or `s3`)
+
+## Storage
+- `STORAGE_BACKEND=local` writes artifacts to `STORAGE_LOCAL_PATH`
+- `STORAGE_BACKEND=s3` writes artifacts to S3-compatible object storage using:
+  - `STORAGE_BUCKET`
+  - `STORAGE_S3_REGION`
+  - `STORAGE_S3_ENDPOINT` (optional for MinIO/R2/etc.)
+  - `STORAGE_S3_ACCESS_KEY`
+  - `STORAGE_S3_SECRET_KEY`
 
 ## Testing
 From `backend/`:

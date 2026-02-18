@@ -27,6 +27,7 @@ def store_pipeline_result(
     filename: str,
     content_type: str,
     result: PipelineResponse,
+    source_object_key: str | None = None,
 ) -> None:
     tenant = get_or_create_tenant(db, tenant_external_id)
 
@@ -35,6 +36,7 @@ def store_pipeline_result(
         tenant_id=tenant.id,
         filename=filename,
         content_type=content_type,
+        source_object_key=source_object_key,
         status="processed",
     )
     db.add(submission)
@@ -78,3 +80,19 @@ def get_latest_profile_version(db: Session, tenant_external_id: str, submission_
         .where(ProfileVersion.tenant_id == tenant.id, ProfileVersion.submission_id == submission_id)
         .order_by(ProfileVersion.version.desc(), ProfileVersion.created_at.desc())
     )
+
+
+def set_export_key(
+    db: Session,
+    version: ProfileVersion,
+    export_type: str,
+    storage_key: str,
+) -> None:
+    if export_type == "markdown":
+        version.export_markdown_key = storage_key
+    elif export_type == "json":
+        version.export_json_key = storage_key
+    elif export_type == "pdf":
+        version.export_pdf_key = storage_key
+    db.add(version)
+    db.commit()

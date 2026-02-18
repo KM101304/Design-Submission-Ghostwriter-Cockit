@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import PlainTextResponse, Response
 from sqlalchemy.orm import Session
@@ -6,7 +8,8 @@ from app.api.deps.tenant import tenant_id
 from app.db.session import get_db
 from app.schemas.submission import SubmissionListItem
 from app.services.export import as_json, as_markdown, as_pdf_bytes, pipeline_from_stored_json
-from app.services.repository import get_latest_profile_version, list_submissions
+from app.services.repository import get_latest_profile_version, list_submissions, set_export_key
+from app.services.storage import get_storage
 
 router = APIRouter(prefix="/submissions", tags=["submissions"])
 
@@ -41,14 +44,28 @@ def export_submission(
         raise HTTPException(status_code=404, detail="Submission not found")
 
     result = pipeline_from_stored_json(version.profile_json, version.completeness_json, version.questions_json)
+    storage = get_storage()
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
 
     if format == "json":
-        return Response(content=as_json(result), media_type="application/json")
+        payload = as_json(result).encode("utf-8")
+        key = f"exports/{tenant}/{submission_id}/{ts}.json"
+        storage.put_bytes(key=key, content=payload, content_type="application/json")
+        set_export_key(db, version, "json", key)
+        return Response(content=payload, media_type="application/json")
     if format == "pdf":
+        payload = as_pdf_bytes(result)
+        key = f"exports/{tenant}/{submission_id}/{ts}.pdf"
+        storage.put_bytes(key=key, content=payload, content_type="application/pdf")
+        set_export_key(db, version, "pdf", key)
         return Response(
-            content=as_pdf_bytes(result),
+            content=payload,
             media_type="application/pdf",
             headers={"Content-Disposition": f"attachment; filename={submission_id}.pdf"},
         )
 
-    return PlainTextResponse(content=as_markdown(result), media_type="text/markdown")
+    payload = as_markdown(result).encode("utf-8")
+    key = f"exports/{tenant}/{submission_id}/{ts}.md"
+    storage.put_bytes(key=key, content=payload, content_type="text/markdown")
+    set_export_key(db, version, "markdown", key)
+    return PlainTextResponse(content=payload.decode("utf-8"), media_type="text/markdown")

@@ -1,4 +1,16 @@
 services:
+  migrate:
+    build:
+      context: ./backend
+    container_name: ghostwriter-migrate
+    command: alembic upgrade head
+    env_file:
+      - .env
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - db
+
   backend:
     build:
       context: ./backend
@@ -10,6 +22,7 @@ services:
     volumes:
       - ./backend:/app
     depends_on:
+      - migrate
       - db
       - redis
 

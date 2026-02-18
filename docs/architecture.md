@@ -16,6 +16,7 @@ Core flow:
 - `backend/app/services`: ingestion, extraction, normalization, scoring, question generation
 - `backend/app/models`: canonical risk domain objects
 - `frontend`: single-screen cockpit UI (submission list, profile, completeness + actions)
+- `backend/alembic`: database migration history and environment
 
 ## Data Plane
 - PostgreSQL: tenant, users, submissions, profile versions, required-field rules, audit logs
@@ -28,6 +29,11 @@ Core flow:
 - deterministic post-processing for schema validation and contradiction flags
 - provenance map for every extracted field (`source_doc`, `page`, `span`, `confidence`)
 
+## Async Execution
+- `POST /pipeline/run-async` queues pipeline execution in Celery
+- worker task persists pipeline outputs and audit events
+- `GET /pipeline/jobs/{job_id}` returns queued/running/succeeded/failed state
+
 ## MVP Slice Implemented
 - FastAPI app scaffold + health endpoint
 - ingestion endpoint (`POST /api/v1/ingestion/upload`)
@@ -35,6 +41,7 @@ Core flow:
 - deterministic ingestion metadata extraction stub
 - pipeline persistence models (`tenants`, `submissions`, `profile_versions`, `audit_logs`)
 - export engine for `markdown`, `json`, and `pdf`
+- storage abstraction with `local` and `s3` backends for source docs and exports
 - initial cockpit shell in Next.js App Router
 - tests for schema + ingestion API
 

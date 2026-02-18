@@ -25,6 +25,7 @@ class Submission(Base):
     tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
     filename: Mapped[str] = mapped_column(String(255))
     content_type: Mapped[str] = mapped_column(String(100))
+    source_object_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     status: Mapped[str] = mapped_column(String(64), default="processed")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -39,6 +40,9 @@ class ProfileVersion(Base):
     profile_json: Mapped[str] = mapped_column(Text)
     completeness_json: Mapped[str] = mapped_column(Text)
     questions_json: Mapped[str] = mapped_column(Text)
+    export_markdown_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    export_json_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    export_pdf_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
