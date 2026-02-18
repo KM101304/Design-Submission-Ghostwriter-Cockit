@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from hashlib import sha256
 from uuid import uuid4
 
 from sqlalchemy.orm import Session
@@ -14,6 +15,10 @@ from app.services.repository import store_pipeline_result
 from app.services.storage import get_storage, safe_filename
 
 
+def compute_payload_sha256(payload: bytes) -> str:
+    return sha256(payload).hexdigest()
+
+
 def run_pipeline_bytes(
     db: Session,
     tenant_external_id: str,
@@ -21,18 +26,20 @@ def run_pipeline_bytes(
     content_type: str,
     payload: bytes,
     persist: bool = True,
+    submission_id: str | None = None,
+    source_object_key: str | None = None,
 ) -> PipelineResponse:
     raw_text = extract_text(filename=filename, content_type=content_type, payload=payload)
     extraction = extract_risk_facts(raw_text=raw_text, filename=filename)
-    submission_id = f"sub_{uuid4().hex[:12]}"
-    profile = build_canonical_profile(submission_id=submission_id, extraction=extraction)
+    resolved_submission_id = submission_id or f"sub_{uuid4().hex[:12]}"
+    profile = build_canonical_profile(submission_id=resolved_submission_id, extraction=extraction)
     completeness = score_missingness(profile)
     questions = generate_question_set(profile.insured_name, completeness)
     result = PipelineResponse(profile=profile, completeness=completeness, questions=questions)
 
     if persist:
         storage = get_storage()
-        key = f"submissions/{tenant_external_id}/{submission_id}/{safe_filename(filename)}"
+        key = source_object_key or f"submissions/{tenant_external_id}/{resolved_submission_id}/{safe_filename(filename)}"
         storage.put_bytes(key=key, content=payload, content_type=content_type)
         store_pipeline_result(
             db,

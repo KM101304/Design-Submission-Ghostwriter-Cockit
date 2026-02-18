@@ -2,29 +2,26 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
-from app.main import app
 from app.schemas.pipeline import PipelineResponse
 
 
-client = TestClient(app)
-
-
-def test_pipeline_run_async_accepts_job(monkeypatch) -> None:
+def test_pipeline_run_async_accepts_job(client: TestClient, auth_headers: dict[str, str], monkeypatch) -> None:
     monkeypatch.setattr(
-        "app.api.routes.pipeline.process_submission_task.delay",
-        lambda **kwargs: SimpleNamespace(id="job-123"),
+        "app.api.routes.pipeline.process_submission_task.apply_async",
+        lambda task_id, kwargs: SimpleNamespace(id=task_id),
     )
 
     response = client.post(
         "/api/v1/pipeline/run-async",
         files={"file": ("submission.txt", b"Insured: Demo", "text/plain")},
-        headers={"x-tenant-id": "demo-brokerage"},
+        headers=auth_headers,
     )
     assert response.status_code == 200
-    assert response.json()["job_id"] == "job-123"
+    assert response.json()["job_id"].startswith("job_")
+    assert "submission_id" in response.json()
 
 
-def test_pipeline_job_status_succeeded(monkeypatch) -> None:
+def test_pipeline_job_status_succeeded(client: TestClient, auth_headers: dict[str, str], monkeypatch) -> None:
     result = PipelineResponse.model_validate(
         {
             "profile": {
@@ -77,7 +74,7 @@ def test_pipeline_job_status_succeeded(monkeypatch) -> None:
 
     monkeypatch.setattr("app.api.routes.pipeline.celery_app.AsyncResult", lambda _job_id: FakeResult())
 
-    response = client.get("/api/v1/pipeline/jobs/job-123")
+    response = client.get("/api/v1/pipeline/jobs/job-123", headers=auth_headers)
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "succeeded"

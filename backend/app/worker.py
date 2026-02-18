@@ -8,4 +8,9 @@ celery_app.conf.update(
     accept_content=["json"],
     result_serializer="json",
     imports=("app.services.tasks",),
+    task_acks_late=True,
+    worker_prefetch_multiplier=1,
+    task_default_queue="ghostwriter",
+    task_default_exchange="ghostwriter",
+    task_default_routing_key="ghostwriter.default",
 )

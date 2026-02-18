@@ -12,6 +12,7 @@ type PipelineResponse = {
     locations: Array<{ address: string }>;
     lines_of_business: string[];
     contradictions: string[];
+    source_citations?: Record<string, Array<{ source_document: string; page: number | null; snippet: string | null }>>;
   };
   completeness: Array<{
     line_of_business: string;
@@ -33,11 +34,20 @@ type SubmissionListItem = {
   filename: string;
   content_type: string;
   status: string;
+  job_status: string;
+  job_id: string | null;
+  created_at: string;
+};
+
+type AuditLogItem = {
+  event_type: string;
+  details: string;
   created_at: string;
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-const TENANT = "demo-brokerage";
+const DEMO_EMAIL = process.env.NEXT_PUBLIC_DEMO_EMAIL ?? "admin@ghostwriter.dev";
+const DEMO_PASSWORD = process.env.NEXT_PUBLIC_DEMO_PASSWORD ?? "ChangeMe123!";
 
 export default function CockpitPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -45,12 +55,41 @@ export default function CockpitPage() {
   const [submissions, setSubmissions] = useState<SubmissionListItem[]>([]);
   const [result, setResult] = useState<PipelineResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [tenant, setTenant] = useState<string>("demo-brokerage");
+  const [timeline, setTimeline] = useState<string[]>([]);
+  const [audits, setAudits] = useState<AuditLogItem[]>([]);
+
+  async function ensureLogin(): Promise<{ token: string; tenantId: string }> {
+    if (token) {
+      return { token, tenantId: tenant };
+    }
+    const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: DEMO_EMAIL, password: DEMO_PASSWORD }),
+    });
+    if (!res.ok) {
+      throw new Error("Login failed; check seeded user credentials.");
+    }
+    const payload = (await res.json()) as { access_token: string; tenant_id: string };
+    setToken(payload.access_token);
+    setTenant(payload.tenant_id);
+    return { token: payload.access_token, tenantId: payload.tenant_id };
+  }
+
+  async function authHeaders() {
+    const auth = await ensureLogin();
+    return {
+      Authorization: `Bearer ${auth.token}`,
+      "x-tenant-id": auth.tenantId,
+    };
+  }
 
   async function loadSubmissions() {
     try {
-      const res = await fetch(`${API_BASE}/api/v1/submissions`, {
-        headers: { "x-tenant-id": TENANT },
-      });
+      const headers = await authHeaders();
+      const res = await fetch(`${API_BASE}/api/v1/submissions`, { headers });
       if (!res.ok) {
         return;
       }
@@ -65,6 +104,20 @@ export default function CockpitPage() {
     void loadSubmissions();
   }, []);
 
+  async function loadAudit(submissionId: string) {
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`${API_BASE}/api/v1/submissions/${submissionId}/audit`, { headers });
+      if (!res.ok) {
+        return;
+      }
+      const rows = (await res.json()) as AuditLogItem[];
+      setAudits(rows);
+    } catch {
+      // noop
+    }
+  }
+
   async function runPipeline() {
     if (!file) {
       setError("Select a file first.");
@@ -72,28 +125,76 @@ export default function CockpitPage() {
     }
     setRunning(true);
     setError(null);
+    setTimeline(["queued"]);
 
     const form = new FormData();
     form.append("file", file);
 
     try {
-      const res = await fetch(`${API_BASE}/api/v1/pipeline/run`, {
+      const headers = await authHeaders();
+      const enqueue = await fetch(`${API_BASE}/api/v1/pipeline/run-async`, {
         method: "POST",
-        headers: { "x-tenant-id": TENANT },
+        headers,
         body: form,
       });
-      if (!res.ok) {
-        const payload = (await res.json()) as { detail?: string };
-        throw new Error(payload.detail ?? "Pipeline failed");
+      if (!enqueue.ok) {
+        const payload = (await enqueue.json()) as { detail?: string };
+        throw new Error(payload.detail ?? "Queueing failed");
       }
-      const data = (await res.json()) as PipelineResponse;
-      setResult(data);
+      const queued = (await enqueue.json()) as { job_id: string; submission_id: string; status: string };
+      setTimeline((prev) => [...prev, `job:${queued.job_id}`]);
+
+      const final = await pollJob(queued.job_id);
+      setResult(final);
+      await loadAudit(final.profile.submission_id);
       await loadSubmissions();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
+      setTimeline((prev) => [...prev, "failed"]);
     } finally {
       setRunning(false);
     }
+  }
+
+  async function pollJob(jobId: string): Promise<PipelineResponse> {
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      const headers = await authHeaders();
+      const res = await fetch(`${API_BASE}/api/v1/pipeline/jobs/${jobId}`, { headers });
+      if (!res.ok) {
+        throw new Error("Job status request failed");
+      }
+      const payload = (await res.json()) as {
+        status: string;
+        result?: PipelineResponse;
+        error?: string;
+      };
+      setTimeline((prev) => (prev[prev.length - 1] === payload.status ? prev : [...prev, payload.status]));
+      if (payload.status === "succeeded" && payload.result) {
+        return payload.result;
+      }
+      if (payload.status === "failed") {
+        throw new Error(payload.error ?? "Pipeline failed");
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+    throw new Error("Pipeline timed out");
+  }
+
+  async function exportArtifact(format: "markdown" | "json" | "pdf") {
+    if (!result) return;
+    const headers = await authHeaders();
+    const res = await fetch(`${API_BASE}/api/v1/submissions/${result.profile.submission_id}/export?format=${format}`, { headers });
+    if (!res.ok) {
+      setError(`Export ${format} failed`);
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${result.profile.submission_id}.${format === "markdown" ? "md" : format}`;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   const packetLocked = useMemo(() => {
@@ -132,34 +233,24 @@ export default function CockpitPage() {
             disabled={running}
             className="rounded bg-[var(--accent)] px-3 py-1 text-xs font-medium text-black disabled:opacity-50"
           >
-            {running ? "Running..." : "Run Pipeline"}
+            {running ? "Running..." : "Run Async Pipeline"}
           </button>
+          {!running && error && file && (
+            <button onClick={() => void runPipeline()} className="rounded border border-[var(--bad)]/50 px-3 py-1 text-xs text-[var(--bad)]">
+              Retry
+            </button>
+          )}
           {result && (
             <>
-              <a
-                href={`${API_BASE}/api/v1/submissions/${result.profile.submission_id}/export?format=markdown`}
-                target="_blank"
-                className="rounded border border-white/20 px-3 py-1 text-xs"
-                rel="noreferrer"
-              >
+              <button onClick={() => void exportArtifact("markdown")} className="rounded border border-white/20 px-3 py-1 text-xs">
                 Export MD
-              </a>
-              <a
-                href={`${API_BASE}/api/v1/submissions/${result.profile.submission_id}/export?format=json`}
-                target="_blank"
-                className="rounded border border-white/20 px-3 py-1 text-xs"
-                rel="noreferrer"
-              >
+              </button>
+              <button onClick={() => void exportArtifact("json")} className="rounded border border-white/20 px-3 py-1 text-xs">
                 Export JSON
-              </a>
-              <a
-                href={`${API_BASE}/api/v1/submissions/${result.profile.submission_id}/export?format=pdf`}
-                target="_blank"
-                className="rounded border border-white/20 px-3 py-1 text-xs"
-                rel="noreferrer"
-              >
+              </button>
+              <button onClick={() => void exportArtifact("pdf")} className="rounded border border-white/20 px-3 py-1 text-xs">
                 Export PDF
-              </a>
+              </button>
             </>
           )}
         </div>
@@ -172,12 +263,25 @@ export default function CockpitPage() {
           <div className="mt-3 space-y-2">
             {submissions.length === 0 && <p className="text-xs text-[var(--muted)]">No submissions yet.</p>}
             {submissions.map((item) => (
-              <article key={item.submission_id} className="rounded-lg border border-white/10 bg-black/20 p-3">
+              <article
+                key={item.submission_id}
+                className="cursor-pointer rounded-lg border border-white/10 bg-black/20 p-3"
+                onClick={() => void loadAudit(item.submission_id)}
+              >
                 <p className="text-xs text-[var(--muted)]">{item.submission_id}</p>
                 <p className="text-sm font-medium break-all">{item.filename}</p>
-                <p className="mt-2 text-xs text-[var(--muted)]">{item.status}</p>
+                <p className="mt-1 text-xs text-[var(--muted)]">{item.job_status}</p>
               </article>
             ))}
+          </div>
+
+          <div className="mt-4 rounded-lg border border-white/10 bg-black/20 p-3">
+            <p className="text-xs uppercase tracking-wide text-[var(--muted)]">Pipeline Timeline</p>
+            <ul className="mt-2 space-y-1 text-xs">
+              {timeline.map((step, i) => (
+                <li key={`${step}-${i}`}>{step}</li>
+              ))}
+            </ul>
           </div>
         </section>
 
@@ -198,6 +302,17 @@ export default function CockpitPage() {
                   {result.profile.contradictions.join(" ")}
                 </div>
               )}
+
+              <div className="mt-4 rounded-lg border border-white/10 bg-black/20 p-3">
+                <p className="text-xs uppercase tracking-wide text-[var(--muted)]">Field Citations</p>
+                <ul className="mt-2 space-y-1 text-xs">
+                  {Object.entries(result.profile.source_citations ?? {}).map(([field, refs]) => (
+                    <li key={field}>
+                      {field}: {refs[0]?.source_document ?? "unknown"} {refs[0]?.snippet ? `- ${refs[0].snippet}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </>
           ) : (
             <p className="mt-4 text-sm text-[var(--muted)]">Run the pipeline to populate the canonical risk profile.</p>
@@ -226,6 +341,15 @@ export default function CockpitPage() {
                 <ul className="mt-2 space-y-1 text-sm">
                   {result.questions.bullet_summary.map((q, idx) => (
                     <li key={`${q}-${idx}`}>{q}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="mt-4 rounded-lg border border-white/10 bg-black/20 p-3">
+                <p className="text-xs uppercase tracking-wide text-[var(--muted)]">Audit Trail</p>
+                <ul className="mt-2 space-y-1 text-xs">
+                  {audits.map((a, idx) => (
+                    <li key={`${a.event_type}-${idx}`}>{new Date(a.created_at).toLocaleTimeString()} {a.event_type}</li>
                   ))}
                 </ul>
               </div>

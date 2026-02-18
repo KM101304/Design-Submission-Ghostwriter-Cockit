@@ -1,0 +1,71 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ghostwriter
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+    env:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/ghostwriter
+      REDIS_URL: redis://localhost:6379/0
+      AUTH_DISABLED: "false"
+      AUTH_SECRET_KEY: test-secret
+      AUTH_PASSWORD_SALT: test-salt
+      AUTH_SEED_EMAIL: admin@ghostwriter.dev
+      AUTH_SEED_PASSWORD: ChangeMe123!
+      AUTH_SEED_TENANT_ID: demo-brokerage
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          cd backend
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install -r requirements-dev.txt
+      - name: Migration check
+        run: |
+          cd backend
+          source .venv/bin/activate
+          alembic upgrade head
+      - name: Tests
+        run: |
+          cd backend
+          source .venv/bin/activate
+          pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Build
+        run: |
+          cd frontend
+          npm ci
+          npm run build

@@ -17,6 +17,7 @@ Core flow:
 - `backend/app/models`: canonical risk domain objects
 - `frontend`: single-screen cockpit UI (submission list, profile, completeness + actions)
 - `backend/alembic`: database migration history and environment
+- `.github/workflows`: CI automation for migrations/tests/build
 
 ## Data Plane
 - PostgreSQL: tenant, users, submissions, profile versions, required-field rules, audit logs
@@ -33,6 +34,12 @@ Core flow:
 - `POST /pipeline/run-async` queues pipeline execution in Celery
 - worker task persists pipeline outputs and audit events
 - `GET /pipeline/jobs/{job_id}` returns queued/running/succeeded/failed state
+- idempotency support avoids duplicate jobs on retried uploads
+
+## Security
+- JWT authentication via `/auth/login`
+- tenant context enforced from token + header mismatch protection
+- per-submission audit timeline available via `/submissions/{id}/audit`
 
 ## MVP Slice Implemented
 - FastAPI app scaffold + health endpoint
@@ -42,6 +49,7 @@ Core flow:
 - pipeline persistence models (`tenants`, `submissions`, `profile_versions`, `audit_logs`)
 - export engine for `markdown`, `json`, and `pdf`
 - storage abstraction with `local` and `s3` backends for source docs and exports
+- structured JSON request logs + optional Sentry integration
 - initial cockpit shell in Next.js App Router
 - tests for schema + ingestion API
 

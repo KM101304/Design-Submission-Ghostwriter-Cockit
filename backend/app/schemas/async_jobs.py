@@ -7,6 +7,7 @@ from app.schemas.pipeline import PipelineResponse
 
 class AsyncPipelineAccepted(BaseModel):
     job_id: str
+    submission_id: str
     status: str = "queued"
 
 
