@@ -21,6 +21,7 @@ Core flow:
 - PostgreSQL: tenant, users, submissions, profile versions, required-field rules, audit logs
 - Redis: async jobs + retries
 - Object storage abstraction: source docs, rendered exports, extraction artifacts
+- Local dev default uses in-memory SQLite; set `DATABASE_URL` in `.env` for Postgres runtime.
 
 ## AI Plane
 - OpenAI-backed extraction + reasoning adapters behind service interfaces
@@ -32,6 +33,8 @@ Core flow:
 - ingestion endpoint (`POST /api/v1/ingestion/upload`)
 - canonical `RiskProfile` schema and field provenance models
 - deterministic ingestion metadata extraction stub
+- pipeline persistence models (`tenants`, `submissions`, `profile_versions`, `audit_logs`)
+- export engine for `markdown`, `json`, and `pdf`
 - initial cockpit shell in Next.js App Router
 - tests for schema + ingestion API
 

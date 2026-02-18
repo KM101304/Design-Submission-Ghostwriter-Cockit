@@ -47,6 +47,13 @@ docker compose up --build
   - canonical profile build
   - missingness scoring
   - adaptive question generation
+- Persists submission + profile version + audit log (tenant-aware via `x-tenant-id` header)
+
+`GET /api/v1/submissions`
+- Lists recent submissions for the tenant
+
+`GET /api/v1/submissions/{submission_id}/export?format=markdown|json|pdf`
+- Exports packet summary as Markdown, JSON, or PDF
 
 ## Testing
 From `backend/`:
