@@ -28,8 +28,8 @@ docker compose up --build
 
 ## MVP Progress
 - [x] Phase 1 scaffold + schema + ingestion endpoint
-- [ ] Phase 2 extraction + canonical merge
-- [ ] Phase 3 missingness + questions
+- [~] Phase 2 extraction + canonical merge (initial deterministic engine)
+- [~] Phase 3 missingness + questions (initial scoring + drafting)
 - [ ] Phase 4 cockpit orchestration UX
 - [ ] Phase 5 exports + hardening
 
@@ -40,6 +40,13 @@ docker compose up --build
   - `structured_fields`
   - `field_confidence`
   - `source_citations`
+
+`POST /api/v1/pipeline/run`
+- Accepts a submission document and runs the initial pipeline:
+  - extraction
+  - canonical profile build
+  - missingness scoring
+  - adaptive question generation
 
 ## Testing
 From `backend/`:
