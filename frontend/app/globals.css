@@ -3,14 +3,14 @@
 @tailwind utilities;
 
 :root {
-  --bg: #050b10;
-  --panel: #0b131a;
-  --muted: #7f96a8;
-  --text: #d7e2ea;
-  --accent: #15b8a6;
-  --warn: #f4b942;
-  --ok: #2ecf8f;
-  --bad: #f26666;
+  --bg: #081019;
+  --panel: #101a24;
+  --muted: #8ea2b4;
+  --text: #e6edf2;
+  --accent: #33d6bd;
+  --warn: #f2b84d;
+  --ok: #37d796;
+  --bad: #f27575;
 }
 
 * {
@@ -19,7 +19,16 @@
 
 body {
   margin: 0;
-  background: radial-gradient(circle at top right, #10212b 0%, var(--bg) 45%, #03070b 100%);
+  background:
+    radial-gradient(1200px 600px at 8% -5%, #1c3d4d66 0%, transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, #31432555 0%, transparent 58%),
+    linear-gradient(150deg, #081019 0%, #050b11 55%, #070d12 100%);
   color: var(--text);
-  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  font-family: "Sora", "IBM Plex Sans", "Segoe UI", sans-serif;
+}
+
+.bg-cockpit-noise {
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 20px 20px;
 }
